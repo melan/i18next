@@ -1,7 +1,7 @@
 {
   "name": "i18next",
-  "version": "1.6.0",
-  "main": "./release/i18next-1.6.0.min.js",
+  "version": "1.7.1",
+  "main": "./release/i18next-1.7.1.min.js",
   "dependencies": {},
   "ignore": [
     "test/",
@@ -11,9 +11,9 @@
     "report/",
     "buildtasks/",
     ".gitignore",
-    "grunt.js",
+    "Gruntfile.js",
     "package.json",
-    "testem.yml",
+    "testacular.conf.js",
     "**/*.zip"
   ]
 }

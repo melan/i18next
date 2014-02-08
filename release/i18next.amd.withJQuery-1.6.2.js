@@ -1,4 +1,4 @@
-// i18next, v1.6.1pre
+// i18next, v1.6.2
 // Copyright (c)2013 Jan Mühlemann (jamuhl).
 // Distributed under MIT license
 // http://i18next.com
@@ -127,6 +127,7 @@
         pluralSuffix: '_plural',
         pluralNotFound: ['plural_not_found', Math.random()].join(''),
         contextNotFound: ['context_not_found', Math.random()].join(''),
+        escapeInterpolation: false,
     
         setJqueryExt: true,
         defaultValueFromContent: true,
@@ -184,6 +185,25 @@
         }
     
         return object;
+    }
+    
+    var _entityMap = {
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': '&quot;',
+        "'": '&#39;',
+        "/": '&#x2F;'
+    };
+    
+    function _escape(data) {
+        if (typeof data === 'string') {
+            return data.replace(/[&<>"'\/]/g, function (s) {
+                return _entityMap[s];
+            });    
+        }else{
+            return data;
+        }
     }
     
     function _ajax(options) {
@@ -519,6 +539,7 @@
         ajax: $ ? $.ajax : _ajax,
         cookie: typeof document !== 'undefined' ? _cookie : cookie_noop,
         detectLanguage: detectLanguage,
+        escape: _escape,
         log: function(str) {
             if (o.debug && typeof console !== "undefined") console.log(str);
         },
@@ -813,13 +834,21 @@
         if (str.indexOf(options.interpolationPrefix || o.interpolationPrefix) < 0) return str;
     
         var prefix = options.interpolationPrefix ? f.regexEscape(options.interpolationPrefix) : o.interpolationPrefixEscaped
-          , suffix = options.interpolationSuffix ? f.regexEscape(options.interpolationSuffix) : o.interpolationSuffixEscaped;
+          , suffix = options.interpolationSuffix ? f.regexEscape(options.interpolationSuffix) : o.interpolationSuffixEscaped
+          , unEscapingSuffix = 'HTML'+suffix;
     
         f.each(replacementHash, function(key, value) {
+            var nextKey = nestedKey ? nestedKey + o.keyseparator + key : key;
             if (typeof value === 'object' && value !== null) {
-                str = applyReplacement(str, value, nestedKey ? nestedKey + o.keyseparator + key : key, options);
+                str = applyReplacement(str, value, nextKey, options);
             } else {
-                str = str.replace(new RegExp([prefix, nestedKey ? nestedKey + o.keyseparator + key : key, suffix].join(''), 'g'), value);
+                if (options.escapeInterpolation || o.escapeInterpolation) {
+                    str = str.replace(new RegExp([prefix, nextKey, unEscapingSuffix].join(''), 'g'), value);
+                    str = str.replace(new RegExp([prefix, nextKey, suffix].join(''), 'g'), f.escape(value));
+                } else {
+                    str = str.replace(new RegExp([prefix, nextKey, suffix].join(''), 'g'), value);
+                }
+                // str = options.escapeInterpolation;
             }
         });
         return str;
@@ -915,9 +944,16 @@
             , lngs = options.lng ? f.toLanguages(options.lng) : languages
             , ns = options.ns || o.ns.defaultNs;
     
+        // split ns and key
+        if (key.indexOf(o.nsseparator) > -1) {
+            var parts = key.split(o.nsseparator);
+            ns = parts[0];
+            key = parts[1];
+        }
+    
         if (found === undefined && o.sendMissing) {
             if (options.lng) {
-                sync.postMissing(lngs[0], ns, key, notfound, lngs);
+                sync.postMissing(lngs[0], ns, key, notFound, lngs);
             } else {
                 sync.postMissing(o.lng, ns, key, notFound, lngs);
             }
@@ -945,11 +981,11 @@
     function _find(key, options){
         options = options || {};
     
-        if (!resStore) { return notfound; } // no resStore to translate from
-    
         var optionWithoutCount, translated
             , notFound = options.defaultValue || key
             , lngs = languages;
+    
+        if (!resStore) { return notFound; } // no resStore to translate from
     
         if (options.lng) {
             lngs = f.toLanguages(options.lng);
@@ -1056,7 +1092,7 @@
             if (o.fallbackNS.length) {
     
                 for (var y = 0, lenY = o.fallbackNS.length; y < lenY; y++) {
-                    found = _translate(o.fallbackNS[y] + o.nsseparator + key, options);
+                    found = _find(o.fallbackNS[y] + o.nsseparator + key, options);
                     
                     if (found) {
                         /* compare value without namespace */
@@ -1067,7 +1103,7 @@
                     }
                 }
             } else {
-                found = _translate(key, options); // fallback to default NS
+                found = _find(key, options); // fallback to default NS
             }
         }
     

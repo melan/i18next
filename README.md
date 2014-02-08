@@ -75,6 +75,10 @@ Assuming we loaded __en-US__, __en__ and __dev__ resources for two namespaces ('
 	$.t('app.child', {count: 1}) // -> 1 child
 	$.t('app.child', {count: 3}) // -> 3 children
 
+### support for key priority when you need to try multiple keys, using the first one that exists.
+
+	$.t(['app.missingKey', 'app.existingKey'], {greeting: "hello"}) // -> I am the existing key: hello
+
 ## or you can just `$('.mySelector').i18n()` assuming you have added the `data-i18n="key"` attribute to your elements
 
 	// given
@@ -111,13 +115,13 @@ To build your own copy of i18next, check out the repository and:
 
 	git clone https://github.com/jamuhl/i18next.git
     cd i18next
-    npm install grunt -g
+    npm install -g grunt-cli
     npm install
     grunt
     
 The grunt command will build i18next into the bin/ and release/ folders.
 
-# License
+# License (MIT)
 
 Copyright (c) 2011 Jan Mühlemann
 

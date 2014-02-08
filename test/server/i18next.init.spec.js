@@ -1,4 +1,4 @@
-// i18next, v1.6.1pre
+// i18next, v1.7.1
 // Copyright (c)2013 Jan Mühlemann (jamuhl).
 // Distributed under MIT license
 // http://i18next.com
@@ -6,6 +6,7 @@
 // HINT
 //
 // you need to replace '_fetchOne' with 'fetchOne' to use this on server
+// fix line 351 'sendMissing' -> 'saveMissing'
 //
 
 
@@ -21,6 +22,8 @@ describe('i18next.init', function() {
     opts = {
       lng: 'en-US',
       fallbackLng: 'dev',
+      fallbackNS: [],
+      fallbackToDefaultNS: false,
       load: 'all',
       preload: [],
       supportedLngs: [],
@@ -29,11 +32,13 @@ describe('i18next.init', function() {
       resGetPath: 'test/locales/__lng__/__ns__.json',
       resSetPath: 'test/locales/__lng__/new.__ns__.json',
       saveMissing: false,
+      sendMissingTo: 'fallback',
       resStore: false,
       returnObjectTrees: false,
       interpolationPrefix: '__',
       interpolationSuffix: '__',
       postProcess: '',
+      parseMissingKey: '',
       debug: false
     };
 
@@ -305,7 +310,8 @@ describe('i18next.init', function() {
     
         describe('and fallbacking to multiple set namespace', function() {
           var resStore = {
-            dev: { 
+            dev: {
+              'ns.common': {},
               'ns.special': { 'simple_dev': 'ok_from_dev' },
               'ns.fallback1': { 
                 'simple_fallback': 'ok_from_fallback1',
@@ -334,6 +340,37 @@ describe('i18next.init', function() {
             expect(i18n.t('ns.common:simple_fallback')).to.be('ok_from_fallback1'); /* first wins */
             expect(i18n.t('ns.common:simple_fallback1')).to.be('ok_from_fallback1');
             expect(i18n.t('ns.common:simple_fallback2')).to.be('ok_from_fallback2');
+          });
+    
+          describe('and post missing', function() {
+    
+            var spy; 
+    
+            beforeEach(function(done) {
+              spy = sinon.spy(i18n.sync, 'postMissing');
+              i18n.init(i18n.functions.extend(opts, { 
+                fallbackNS: ['ns.fallback1', 'ns.fallback2'], 
+                resStore: resStore,
+                sendMissing: true, /* must be changed to saveMissing */
+                ns: { namespaces: ['ns.common', 'ns.special', 'ns.fallback'], defaultNs: 'ns.special'} } ),
+                function(t) { 
+                  t('ns.common:notExisting');
+                  done(); 
+                });
+            });
+    
+            afterEach(function() {
+              spy.restore();
+            });
+    
+            it('it should post only to origin namespace', function() {
+              expect(spy.callCount).to.be(1);
+              expect(spy.args[0][0]).to.be('en-US');
+              expect(spy.args[0][1]).to.be('ns.common');
+              expect(spy.args[0][2]).to.be('notExisting');
+              expect(spy.args[0][3]).to.be('ns.common:notExisting');
+            });
+    
           });
     
         });

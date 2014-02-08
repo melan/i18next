@@ -2,6 +2,7 @@
 // HINT
 //
 // you need to replace '_fetchOne' with 'fetchOne' to use this on server
+// fix line 351 'sendMissing' -> 'saveMissing'
 //
 
 
@@ -17,6 +18,8 @@ describe('i18next.init', function() {
     opts = {
       lng: 'en-US',
       fallbackLng: 'dev',
+      fallbackNS: [],
+      fallbackToDefaultNS: false,
       load: 'all',
       preload: [],
       supportedLngs: [],
@@ -25,11 +28,13 @@ describe('i18next.init', function() {
       resGetPath: 'test/locales/__lng__/__ns__.json',
       resSetPath: 'test/locales/__lng__/new.__ns__.json',
       saveMissing: false,
+      sendMissingTo: 'fallback',
       resStore: false,
       returnObjectTrees: false,
       interpolationPrefix: '__',
       interpolationSuffix: '__',
       postProcess: '',
+      parseMissingKey: '',
       debug: false
     };
 

@@ -1,12 +1,39 @@
-### 1.6.1pre
-- automatic gettext like sprintf syntax detection + postprocess injection PR #101
+### 1.7.1
+- fixed some typo
+- allow translate to take an array of keys - take first found
+- allow numbers in object trees
+
+### 1.7.0
+- test if initialisation finished before allowing calling t function
+- setting option fixLng=true will return t function on init or setLng with the lng fixed for every subsequent call to t
+- grab key from content if attr data-i18n has no value
+- setting shortcutFunction to 'defaultValue' allows calling i18n.t(key, defaultValue)
+- empty string in defaultValue is now valid no longer displaying key
+- allow option cookieDomain
+- fixes issue #115 out of stack exception in IE8 by recursing _translate in objectTrees
+
+### 1.6.3
+- option to parse key if missing
+- fixes issue where plural don't get translated if language is passed in t options
+- fixes issue where key or defaultValue aren't postProcessed with itself as value
+- fixes issue with fallbackLng = false in combination with sendMissingTo = fallback
+- fixes namespace fallback loop to only loop if array has really a ns in it 
+
+### 1.6.2
+- fixes some var typo
+- fixes sendMissing to correct namespace
+- fixes sendMissing in combination with fallbackNS
+
+### 1.6.1
+- PR #106 optionally un/escape interpolated content
+- PR #101 automatic gettext like sprintf syntax detection + postprocess injection
 - customload will get called on dynamicLoad too
 - fixes namespace array settings if loaded resourcebundle or additional namespaces
 - lookup of not existend resouces can be fallbacked to other namespaces - see option fallbackNS (array or string if one ns to fallback to)
 - defaultValues get postProcessed
 - BREAKING: per default null values in resources get translated to fallback. This can be changed by setting option fallbackOnNull to false
-- added support for passing options to nested resources PR #81
-- added an exists method to check for the existence of a key in the resource store PR #88
+- PR #81 added support for passing options to nested resources
+- PR #88 added an exists method to check for the existence of a key in the resource store 
 - fixed issue with null value throws in applyReplacement function
 - fixed issue #80 empty string lookup ends in fallback instead of returning result in language
 - fixed issue with null value in resources not returning expected value
@@ -14,7 +41,7 @@
 - allow zepto as drop in replacement for $
 - using testacular as runner
 - upgraded to grunt 0.4.0
-- fixed Optional interpolation prefix/suffix not used in plural translation cases
+- fixed optional interpolation prefix/suffix not used in plural translation cases
 - optimized check if there are multiple keys for the data-i18n attribute to parse
 
 ### 1.6.0
@@ -59,7 +86,7 @@
 - runnable under rhino
 - seperated amd builds with/without jquery
 
-### 1.5.5
+### 1.5.5
 - __BREAKING__ added all plurals: suffixes will new be same as in gettext usage (number indexes key_plural_0|2|3|4|5|7|8|10|11|20|100), additional if needed signature of addRule has changed
 - added sprintf as postprocessor -> postProcess = 'sprintf' and sprintf = obj or array
 - set default postProcessor on init

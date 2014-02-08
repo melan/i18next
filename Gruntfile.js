@@ -1,9 +1,9 @@
 /*global module:false*/
 module.exports = function(grunt) {
 
-  var version = '1.6.1pre';
+  var version = '1.7.1';
   // before release:
-  // update component.js
+  // update component.js, package.json
   // after release:
   // add tag to repo: git tag -a 1.6.0 -m 'i18next v1.6.0'
   // push tag: git push origin 1.6.0
@@ -43,7 +43,8 @@ module.exports = function(grunt) {
         browsers: ['PhantomJS']
       },
       all: {
-
+        singleRun: true,
+        browsers: ['PhantomJS', 'Chrome', 'Firefox', 'Safari']
       },
       dev: {
         reporters: 'dots',
@@ -201,13 +202,15 @@ module.exports = function(grunt) {
     },
 
     server: {
+      host: '0.0.0.0',
       index: 'test/index.html',
       files: { 'test.js': 'test/test.js' },
 
       folders: {
           'libs': './test/libs',
           'bin': './bin',
-          'locales': './test/locales'
+          'locales': './test/locales',
+          'sample': './sample/static'
       }
     },
 

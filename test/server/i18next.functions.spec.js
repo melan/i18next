@@ -1,4 +1,4 @@
-// i18next, v1.6.1pre
+// i18next, v1.7.1
 // Copyright (c)2013 Jan Mühlemann (jamuhl).
 // Distributed under MIT license
 // http://i18next.com
@@ -20,6 +20,8 @@ describe('i18next.functions', function() {
     opts = {
       lng: 'en-US',
       fallbackLng: 'dev',
+      fallbackNS: [],
+      fallbackToDefaultNS: false,
       load: 'all',
       preload: [],
       supportedLngs: [],
@@ -33,6 +35,7 @@ describe('i18next.functions', function() {
       interpolationPrefix: '__',
       interpolationSuffix: '__',
       postProcess: '',
+      parseMissingKey: '',
       debug: false
     };
 
@@ -62,6 +65,22 @@ describe('i18next.functions', function() {
       });
   
     });
+  
+    it('should be possible to call setLng multiple times to get specialized callbacks', function(done) {
+      i18n.setLng('de-DE', { fixLng: true }, function(deDE) {
+          expect(deDE.lng).to.be('de-DE');
+  
+          i18n.setLng('en-US', { fixLng: true }, function(enUS) {
+              expect(deDE.lng).to.be('de-DE');
+              expect(enUS.lng).to.be('en-US');
+  
+              expect(deDE('simpleTest')).to.be('ok_from_de-DE');
+              expect(enUS('simpleTest')).to.be('ok_from_en-US');
+  
+              done();
+          });
+      });
+    })
   
   });
 
@@ -98,6 +117,9 @@ describe('i18next.functions', function() {
         i18n.addPostProcessor('myProcessor', function(val, key, opts) {
           return 'ok_from_postprocessor';
         });
+        i18n.addPostProcessor('myProcessor2', function(val, key, opts) {
+          return val + ' ok' ;
+        });
       });
   
       beforeEach(function(done) {
@@ -114,7 +136,11 @@ describe('i18next.functions', function() {
       });
   
       it('it should postprocess on default value', function() {
-        expect(i18n.t('notFound', {defaultValue: 'not processed', postProcess: 'myProcessor'})).to.be('ok_from_postprocessor');
+        expect(i18n.t('notFound1', {defaultValue: 'defaultValue', postProcess: 'myProcessor2'})).to.be('defaultValue ok');
+      });
+  
+      it('it should postprocess on missing value', function() {
+        expect(i18n.t('notFound2', {postProcess: 'myProcessor2'})).to.be('notFound2 ok');
       });
   
       describe('or setting it as default on init', function() {

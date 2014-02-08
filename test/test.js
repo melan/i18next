@@ -1,4 +1,4 @@
-// i18next, v1.6.1pre
+// i18next, v1.7.1
 // Copyright (c)2013 Jan Mühlemann (jamuhl).
 // Distributed under MIT license
 // http://i18next.com
@@ -28,8 +28,10 @@ describe('i18next', function() {
       debug: false,
       selectorAttr: 'data-i18n',
       postProcess: '',
+      parseMissingKey: '',
       interpolationPrefix: '__',
-      interpolationSuffix: '__'
+      interpolationSuffix: '__',
+      shortcutFunction: 'sprintf'
     };
   });
 
@@ -376,7 +378,8 @@ describe('i18next', function() {
       
           describe('and fallbacking to multiple set namespace', function() {
             var resStore = {
-              dev: { 
+              dev: {
+                'ns.common': {},
                 'ns.special': { 'simple_dev': 'ok_from_dev' },
                 'ns.fallback1': { 
                   'simple_fallback': 'ok_from_fallback1',
@@ -405,6 +408,37 @@ describe('i18next', function() {
               expect(i18n.t('ns.common:simple_fallback')).to.be('ok_from_fallback1'); /* first wins */
               expect(i18n.t('ns.common:simple_fallback1')).to.be('ok_from_fallback1');
               expect(i18n.t('ns.common:simple_fallback2')).to.be('ok_from_fallback2');
+            });
+      
+            describe('and post missing', function() {
+      
+              var spy; 
+      
+              beforeEach(function(done) {
+                spy = sinon.spy(i18n.sync, 'postMissing');
+                i18n.init(i18n.functions.extend(opts, { 
+                  fallbackNS: ['ns.fallback1', 'ns.fallback2'], 
+                  resStore: resStore,
+                  sendMissing: true, /* must be changed to saveMissing */
+                  ns: { namespaces: ['ns.common', 'ns.special', 'ns.fallback'], defaultNs: 'ns.special'} } ),
+                  function(t) { 
+                    t('ns.common:notExisting');
+                    done(); 
+                  });
+              });
+      
+              afterEach(function() {
+                spy.restore();
+              });
+      
+              it('it should post only to origin namespace', function() {
+                expect(spy.callCount).to.be(1);
+                expect(spy.args[0][0]).to.be('en-US');
+                expect(spy.args[0][1]).to.be('ns.common');
+                expect(spy.args[0][2]).to.be('notExisting');
+                expect(spy.args[0][3]).to.be('ns.common:notExisting');
+              });
+      
             });
       
           });
@@ -669,6 +703,22 @@ describe('i18next', function() {
     
       });
     
+      it('should be possible to call setLng multiple times to get specialized callbacks', function(done) {
+        i18n.setLng('de-DE', { fixLng: true }, function(deDE) {
+            expect(deDE.lng).to.be('de-DE');
+    
+            i18n.setLng('en-US', { fixLng: true }, function(enUS) {
+                expect(deDE.lng).to.be('de-DE');
+                expect(enUS.lng).to.be('en-US');
+    
+                expect(deDE('simpleTest')).to.be('ok_from_de-DE');
+                expect(enUS('simpleTest')).to.be('ok_from_en-US');
+    
+                done();
+            });
+        });
+      })
+    
     });
   
     describe('preloading multiple languages', function() {
@@ -704,6 +754,9 @@ describe('i18next', function() {
           i18n.addPostProcessor('myProcessor', function(val, key, opts) {
             return 'ok_from_postprocessor';
           });
+          i18n.addPostProcessor('myProcessor2', function(val, key, opts) {
+            return val + ' ok' ;
+          });
         });
     
         beforeEach(function(done) {
@@ -720,7 +773,11 @@ describe('i18next', function() {
         });
     
         it('it should postprocess on default value', function() {
-          expect(i18n.t('notFound', {defaultValue: 'not processed', postProcess: 'myProcessor'})).to.be('ok_from_postprocessor');
+          expect(i18n.t('notFound1', {defaultValue: 'defaultValue', postProcess: 'myProcessor2'})).to.be('defaultValue ok');
+        });
+    
+        it('it should postprocess on missing value', function() {
+          expect(i18n.t('notFound2', {postProcess: 'myProcessor2'})).to.be('notFound2 ok');
         });
     
         describe('or setting it as default on init', function() {
@@ -748,11 +805,13 @@ describe('i18next', function() {
     describe('post missing resources', function() {
     
       describe('to fallback', function() {
-        var server, stub; 
+        var server, stub, spy; 
     
         beforeEach(function(done) {
           server = sinon.fakeServer.create();
-          stub = sinon.stub(i18n.functions, "ajax"); 
+          stub = sinon.stub(i18n.functions, "ajax");
+          spy = sinon.spy(i18n.sync, 'postMissing');
+    
     
           server.respondWith([200, { "Content-Type": "text/html", "Content-Length": 2 }, "OK"]);
     
@@ -769,12 +828,103 @@ describe('i18next', function() {
         afterEach(function() {
           server.restore();
           stub.restore();
+          spy.restore();
         });
     
         it('it should post missing resource to server', function() {
           i18n.t('missing');
           server.respond();
           expect(stub.calledOnce).to.be(true);
+        });
+    
+        it('it should post missing resource to server when language is passed in', function() {
+          i18n.t('missing_en', { lng: 'en' });
+          server.respond();
+          expect(stub.calledOnce).to.be(true);
+        });
+    
+        it('it should call with right arguments', function() {
+          i18n.t('missing');
+          expect(spy.args[0][0]).to.be('en-US');
+          expect(spy.args[0][1]).to.be('translation');
+          expect(spy.args[0][2]).to.be('missing');
+          expect(spy.args[0][3]).to.be('missing');
+        });
+    
+        describe('with fallbackLng set to false', function() {
+           
+          beforeEach(function(done) {
+            i18n.init(i18n.functions.extend(opts, {
+              lng: 'de',
+              sendMissing: true,
+              fallbackLng: false,
+              sendMissingTo: 'fallback',
+              resStore: {
+                'en-US': { translation: {  } },
+                'en': { translation: {  } },
+                'dev': { translation: {  } }
+              }
+            }), function(t) { done(); } );
+          });
+    
+          it('it should post missing resource to server', function() {
+            i18n.t('missing');
+            server.respond();
+            expect(stub.calledOnce).to.be(true);
+          });
+    
+          it('it should call post missing with right arguments', function() {
+            i18n.t('missing');
+            expect(spy.args[0][0]).to.be('de');
+            expect(spy.args[0][1]).to.be('translation');
+            expect(spy.args[0][2]).to.be('missing');
+            expect(spy.args[0][3]).to.be('missing');
+          });
+    
+          it('it should call ajax with right arguments', function() {
+            i18n.t('missing');
+            expect(stub.args[0][0].url).to.be('locales/add/de/translation');
+          });
+    
+        });
+    
+      });
+    
+      describe('to current', function() {
+        var server, stub; 
+    
+        beforeEach(function(done) {
+          server = sinon.fakeServer.create();
+          stub = sinon.stub(i18n.functions, "ajax"); 
+    
+          server.respondWith([200, { "Content-Type": "text/html", "Content-Length": 2 }, "OK"]);
+    
+          i18n.init(i18n.functions.extend(opts, {
+            sendMissing: true,
+            sendMissingTo: 'current',
+            //fallbackLng: false,
+            resStore: {
+              'en-US': { translation: {  } },
+              'en': { translation: {  } },
+              'dev': { translation: {  } }
+            }
+          }), function(t) { done(); } );
+        });
+    
+        afterEach(function() {
+          server.restore();
+          stub.restore();
+        });
+    
+        it('it should post missing resource for all lng to server', function() {
+          i18n.t('missing');
+          server.respond();
+          expect(stub.calledOnce).to.be(true);
+        });
+    
+        it('it should call ajax with right arguments', function() {
+          i18n.t('missing2');
+          expect(stub.args[0][0].url).to.be('locales/add/en-US/translation');
         });
     
       });
@@ -816,6 +966,70 @@ describe('i18next', function() {
   
   });
   describe('translation functionality', function() {
+  
+    describe('resource is missing', function() {
+      var resStore = {
+        dev: { translation: { } },
+        en: { translation: { } },            
+        'en-US': { translation: { } }
+      };
+      
+      beforeEach(function(done) {
+        i18n.init(i18n.functions.extend(opts, { resStore: resStore }),
+          function(t) { done(); });
+      });
+    
+      it('it should return key', function() {
+        expect(i18n.t('missing')).to.be('missing');
+      });
+    
+      it('it should return default value if set', function() {
+        expect(i18n.t('missing', { defaultValue: 'defaultOfMissing'})).to.be('defaultOfMissing');
+      });
+    
+      describe('with namespaces', function() {
+    
+        it('it should return key', function() {
+          expect(i18n.t('translate:missing')).to.be('translate:missing');
+        });
+    
+        it('it should return default value if set', function() {
+          expect(i18n.t('translate:missing', { defaultValue: 'defaultOfMissing'})).to.be('defaultOfMissing');
+        });
+    
+        describe('and function parseMissingKey set', function() {
+          beforeEach(function(done) {
+            i18n.init(i18n.functions.extend(opts, { 
+              parseMissingKey: function(key) {
+                var ret = key;
+    
+                if (ret.indexOf(':')) {
+                   ret = ret.substring(ret.lastIndexOf(':')+1, ret.length);
+                }
+    
+                if (ret.indexOf('.')) {
+                  ret = ret.substring(ret.lastIndexOf('.')+1, ret.length);
+                }
+    
+                return ret;
+              } 
+            }), function(t) { done(); });
+          });
+    
+          it('it should parse key', function() {
+            expect(i18n.t('translate:missing')).to.be('missing');
+            expect(i18n.t('translate:somenesting.missing')).to.be('missing');
+          });
+    
+          it('it should return default value if set', function() {
+            expect(i18n.t('translate:missing', { defaultValue: 'defaultOfMissing'})).to.be('defaultOfMissing');
+          });
+    
+        });
+    
+      });
+    
+    });
   
     describe('Check for existence of keys', function() {
         var resStore = {
@@ -949,6 +1163,37 @@ describe('i18next', function() {
       });
     });
   
+    describe('resource key as array', function() {
+      var resStore = {
+        dev: { translation: { existing1: 'hello _name_', existing2: 'howdy __name__' } },
+        en: { translation: { } },
+        'en-US': { translation: { } }
+      };
+    
+      beforeEach(function(done) {
+        i18n.init(i18n.functions.extend(opts, { resStore: resStore }),
+          function(t) { done(); });
+      });
+    
+      describe('when none of the keys exist', function() {
+        it('return the same value as translating the last non-existent key', function() {
+          expect(i18n.t(['nonexistent1', 'nonexistent2'], {name: "Joe"})).to.equal(i18n.t('nonexistent2', {name: "Joe"}));
+        });
+      });
+    
+      describe('when one of the keys exist', function() {
+        it('return the same value as translating the one existing key', function() {
+          expect(i18n.t(['nonexistent1', 'existing2'], {name: "Joe"})).to.equal(i18n.t('existing2', {name: "Joe"}));
+        });
+      });
+    
+      describe('when two or more of the keys exist', function() {
+        it('return the same value as translating the first existing key', function() {
+          expect(i18n.t(['nonexistent1', 'existing2', 'existing1'], {name: "Joe"})).to.equal(i18n.t('existing2', {name: "Joe"}));
+        });
+      });
+    });
+  
     describe('resource string as array', function() {
       var resStore = {
         dev: { translation: { testarray: ["title", "text"] } },
@@ -1034,7 +1279,13 @@ describe('i18next', function() {
             en: { translation: {  } },            
             'en-US': { 
               translation: {                      
-                test: { res: 'added __replace__' }
+                test: { res: 'added __replace__',
+                        id: 0,
+                        template: '4',
+                        title: 'About...',
+                        text: 'Site description',
+                        media: ['test'] 
+                }
               } 
             }
           };
@@ -1047,9 +1298,16 @@ describe('i18next', function() {
           });
     
           it('it should return objectTree', function() {
-            expect(i18n.t('test', { returnObjectTrees: true, replace: 'two' })).to.eql({ 'res': 'added two' });
-            expect(i18n.t('test', { returnObjectTrees: true, replace: 'three' })).to.eql({ 'res': 'added three' });
-            expect(i18n.t('test', { returnObjectTrees: true, replace: 'four' })).to.eql({ 'res': 'added four' });
+            expect(i18n.t('test', { returnObjectTrees: true, replace: 'two' })).to.eql({ 
+              res: 'added two',
+              id: 0,
+              template: '4',
+              title: 'About...',
+              text: 'Site description',
+              media: ['test']
+            });
+            //expect(i18n.t('test', { returnObjectTrees: true, replace: 'three' })).to.eql({ 'res': 'added three' });
+            //expect(i18n.t('test', { returnObjectTrees: true, replace: 'four' })).to.eql({ 'res': 'added four' });
           });
     
         });
@@ -1123,6 +1381,10 @@ describe('i18next', function() {
           expect(i18n.t('interpolationTest2', {toAdd: 'something'})).to.be('added something something twice');
           expect(i18n.t('interpolationTest3', { child: { one: '1', two: '2'}})).to.be('added 1 2');
           expect(i18n.t('interpolationTest4', { child: { grandChild: { three: '3'}}})).to.be('added 3');
+        });
+      
+        it("it should not escape HTML", function() {
+          expect(i18n.t('interpolationTest1', {toAdd: '<html>'})).to.be('added <html>');
         });
       
         it('it should replace passed in key/values on defaultValue', function() {
@@ -1200,6 +1462,77 @@ describe('i18next', function() {
       
         it('it should replace passed in key/values on defaultValue', function() {
           expect(i18n.t('interpolationTest6', {defaultValue: 'added *toAdd*', toAdd: 'something', interpolationPrefix: '*', interpolationSuffix: '*'})).to.be('added something');
+        });
+      
+      });
+      
+      describe('default i18next way - with escaping interpolated arguments per default', function () {
+        var resStore = {
+          dev: { translation: {  } },
+          en: { translation: {  } },            
+          'en-US': { 
+            translation: {                      
+              interpolationTest1: 'added __toAdd__',
+              interpolationTest5: 'added __toAddHTML__',
+              interpolationTest6: 'added __child.oneHTML__',
+              interpolationTest7: 'added __toAddHTML__ __toAdd__'
+            } 
+          }
+        };
+      
+        beforeEach(function(done) {
+          i18n.init(i18n.functions.extend(opts, { 
+            resStore: resStore,
+            escapeInterpolation: true
+          }), function(t) { done(); });
+        });
+      
+        it("it should escape HTML", function() {
+          expect(i18n.t('interpolationTest1', {toAdd: '<html>'})).to.be('added &lt;html&gt;');
+        });
+      
+        it("it should not escape when HTML is suffixed", function() {
+          expect(i18n.t('interpolationTest5', {toAdd: '<html>'})).to.be('added <html>');
+          expect(i18n.t('interpolationTest6', { child: { one: '<1>'}})).to.be('added <1>');
+        });
+      
+        it("it should support both escaping and not escaping HTML", function() {
+          expect(i18n.t('interpolationTest7', {toAdd: '<html>', escapeInterpolation: true})).to.be('added <html> &lt;html&gt;');
+        });
+      
+      });
+      
+      describe('default i18next way - with escaping interpolated arguments per default via options', function () {
+        var resStore = {
+          dev: { translation: {  } },
+          en: { translation: {  } },            
+          'en-US': { 
+            translation: {                      
+              interpolationTest1: 'added __toAdd__',
+              interpolationTest5: 'added __toAddHTML__',
+              interpolationTest6: 'added __child.oneHTML__',
+              interpolationTest7: 'added __toAddHTML__ __toAdd__'
+            } 
+          }
+        };
+      
+        beforeEach(function(done) {
+          i18n.init(i18n.functions.extend(opts, { 
+            resStore: resStore
+          }), function(t) { done(); });
+        });
+      
+        it("it should escape HTML", function() {
+          expect(i18n.t('interpolationTest1', {toAdd: '<html>', escapeInterpolation: true})).to.be('added &lt;html&gt;');
+        });
+      
+        it("it should not escape when HTML is suffixed", function() {
+          expect(i18n.t('interpolationTest5', {toAdd: '<html>', escapeInterpolation: true})).to.be('added <html>');
+          expect(i18n.t('interpolationTest6', { child: { one: '<1>', escapeInterpolation: true}})).to.be('added <1>');
+        });
+      
+        it("it should support both escaping and not escaping HTML", function() {
+          expect(i18n.t('interpolationTest7', {toAdd: '<html>', escapeInterpolation: true})).to.be('added <html> &lt;html&gt;');
         });
       
       });
@@ -1405,6 +1738,33 @@ describe('i18next', function() {
         });
       });
     
+      describe('extended usage - ask for a key in a language with a different plural form', function() {
+        var resStore = {
+            en: { translation: {
+                key:'singular_en',
+                key_plural:'plural_en'
+              } 
+            },
+            zh: { translation: { 
+                key: 'singular_zh'
+              }
+            }
+        };
+        
+        beforeEach(function(done) {
+          i18n.init(i18n.functions.extend(opts, { lng: 'zh', resStore: resStore }),
+            function(t) { done(); });
+        });
+    
+        it('it should provide translation for passed in language with 1 item', function() {
+          expect(i18n.t('key', { lng: 'en', count:1 })).to.be('singular_en');
+        });
+    
+        it('it should provide translation for passed in language with 2 items', function() {
+          expect(i18n.t('key', { lng: 'en', count:2 })).to.be('plural_en');
+        });
+      });
+    
     });
   
     describe('context usage', function() {
@@ -1506,6 +1866,30 @@ describe('i18next', function() {
     
       });
     
+    });
+  
+    describe('using sprintf', function() {
+    
+      var resStore = {
+        dev: { translation: {  } },
+        en: { translation: {  } },            
+        'en-US': { 
+          translation: {                      
+            test: 'hi'
+          } 
+        }
+      };
+      
+      beforeEach(function(done) {
+        i18n.init(i18n.functions.extend(opts, { resStore: resStore, shortcutFunction: 'defaultValue' }),
+          function(t) { done(); });
+      });
+    
+    
+      it('it should recognize the defaultValue syntax set as shortcutFunction', function() {
+        expect(i18n.t('notFound', 'second param defaultValue')).to.be('second param defaultValue');
+      });
+      
     });
   
   });
@@ -1738,6 +2122,32 @@ describe('i18next', function() {
         it('it should set text with attributes options', function() {
           $('#container').i18n(); // without option
           expect($('#testBtn').text()).to.be('replaced ok_from_en-US');
+        });
+        
+      });
+    
+      describe('extended - read key from inner content', function() {
+    
+        var resStore = {
+          dev: { translation: {  } },
+          en: { translation: {  } },            
+          'en-US': { translation: { 'simpleTest2': 'ok_from_en-US' } }
+        };
+        
+        beforeEach(function(done) {
+          setFixtures('<div id="container"><button id="testBtn" ' + opts.selectorAttr + '>simpleTest2</button></div>');
+    
+          i18n.init(i18n.functions.extend(opts, { 
+            resStore: resStore
+          }),
+            function(t) {
+              done(); 
+            });
+        });
+    
+        it('it should read key from inner content', function() {
+          $('#container').i18n(); // without option
+          expect($('#testBtn').text()).to.be('ok_from_en-US');
         });
         
       });

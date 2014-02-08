@@ -40,6 +40,7 @@ var o = {
     pluralNotFound: ['plural_not_found', Math.random()].join(''),
     negativeNotFound: ['negative_not_found', Math.random()].join(''),
     contextNotFound: ['context_not_found', Math.random()].join(''),
+    escapeInterpolation: false,
 
     setJqueryExt: true,
     defaultValueFromContent: true,
@@ -47,6 +48,10 @@ var o = {
     cookieExpirationTime: undefined,
     useCookie: true,
     cookieName: 'i18next',
+    cookieDomain: undefined,
 
-    postProcess: undefined
+    postProcess: undefined,
+    parseMissingKey: undefined,
+
+    shortcutFunction: 'sprintf' // or: defaultValue
 };

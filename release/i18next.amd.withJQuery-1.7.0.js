@@ -1,18 +1,20 @@
-// i18next, v1.6.1pre
+// i18next, v1.7.0
 // Copyright (c)2013 Jan Mühlemann (jamuhl).
 // Distributed under MIT license
 // http://i18next.com
 (function (root, factory) {
     if (typeof exports === 'object') {
 
-        module.exports = factory();
+      var jquery = require('jquery');
+
+      module.exports = factory(jquery);
 
     } else if (typeof define === 'function' && define.amd) {
 
-        define([], factory);
+      define(['jquery'], factory);
 
     } 
-}(this, function () {
+}(this, function ($) {
 
     // add indexOf to non ECMA-262 standard compliant browsers
     if (!Array.prototype.indexOf) {
@@ -79,8 +81,7 @@
         };
     }
 
-    var $ = undefined
-        , i18n = {}
+    var i18n = {}
         , resStore = {}
         , currentLng
         , replacementCounter = 0
@@ -126,6 +127,7 @@
         pluralSuffix: '_plural',
         pluralNotFound: ['plural_not_found', Math.random()].join(''),
         contextNotFound: ['context_not_found', Math.random()].join(''),
+        escapeInterpolation: false,
     
         setJqueryExt: true,
         defaultValueFromContent: true,
@@ -133,8 +135,12 @@
         cookieExpirationTime: undefined,
         useCookie: true,
         cookieName: 'i18next',
+        cookieDomain: undefined,
     
-        postProcess: undefined
+        postProcess: undefined,
+        parseMissingKey: undefined,
+    
+        shortcutFunction: 'sprintf' // or: defaultValue
     };
     function _extend(target, source) {
         if (!source || typeof source === 'function') {
@@ -183,6 +189,25 @@
         }
     
         return object;
+    }
+    
+    var _entityMap = {
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': '&quot;',
+        "'": '&#39;',
+        "/": '&#x2F;'
+    };
+    
+    function _escape(data) {
+        if (typeof data === 'string') {
+            return data.replace(/[&<>"'\/]/g, function (s) {
+                return _entityMap[s];
+            });    
+        }else{
+            return data;
+        }
     }
     
     function _ajax(options) {
@@ -475,7 +500,7 @@
     }
     
     var _cookie = {
-        create: function(name,value,minutes) {
+        create: function(name,value,minutes,domain) {
             var expires;
             if (minutes) {
                 var date = new Date();
@@ -483,7 +508,8 @@
                 expires = "; expires="+date.toGMTString();
             }
             else expires = "";
-            document.cookie = name+"="+value+expires+"; path=/";
+            domain = (domain)? "domain="+domain+";" : "";
+            document.cookie = name+"="+value+expires+";"+domain+"path=/";
         },
     
         read: function(name) {
@@ -503,7 +529,7 @@
     };
     
     var cookie_noop = {
-        create: function(name,value,minutes) {},
+        create: function(name,value,minutes,domain) {},
         read: function(name) { return null; },
         remove: function(name) {}
     };
@@ -518,6 +544,7 @@
         ajax: $ ? $.ajax : _ajax,
         cookie: typeof document !== 'undefined' ? _cookie : cookie_noop,
         detectLanguage: detectLanguage,
+        escape: _escape,
         log: function(str) {
             if (o.debug && typeof console !== "undefined") console.log(str);
         },
@@ -554,6 +581,7 @@
         
         // override defaults with passed in options
         f.extend(o, options);
+        delete o.fixLng; /* passed in each time */
     
         // create namespace object if namespace is passed in as string
         if (typeof o.ns == 'string') {
@@ -572,7 +600,7 @@
         if (!o.lng) o.lng = f.detectLanguage(); 
         if (o.lng) {
             // set cookie with lng set (as detectLanguage will set cookie on need)
-            if (o.useCookie) f.cookie.create(o.cookieName, o.lng, o.cookieExpirationTime);
+            if (o.useCookie) f.cookie.create(o.cookieName, o.lng, o.cookieExpirationTime, o.cookieDomain);
         } else {
             o.lng =  o.fallbackLng;
             if (o.useCookie) f.cookie.remove(o.cookieName);
@@ -581,6 +609,16 @@
         languages = f.toLanguages(o.lng);
         currentLng = languages[0];
         f.log('currentLng set to: ' + currentLng);
+    
+        var lngTranslate = translate;
+        if (options.fixLng) {
+            lngTranslate = function(key, options) {
+                options = options || {};
+                options.lng = options.lng || lngTranslate.lng;
+                return translate(key, options);
+            };
+            lngTranslate.lng = currentLng;
+        }
     
         pluralExtensions.setCurrentLng(currentLng);
     
@@ -596,8 +634,9 @@
         // return immidiatly if res are passed in
         if (o.resStore) {
             resStore = o.resStore;
-            if (cb) cb(translate);
-            if (deferred) deferred.resolve();
+            initialized = true;
+            if (cb) cb(lngTranslate);
+            if (deferred) deferred.resolve(lngTranslate);
             if (deferred) return deferred.promise();
             return;
         }
@@ -617,9 +656,10 @@
         // else load them
         i18n.sync.load(lngsToLoad, o, function(err, store) {
             resStore = store;
+            initialized = true;
     
-            if (cb) cb(translate);
-            if (deferred) deferred.resolve();
+            if (cb) cb(lngTranslate);
+            if (deferred) deferred.resolve(lngTranslate);
         });
     
         if (deferred) return deferred.promise();
@@ -722,8 +762,13 @@
         }
     }
     
-    function setLng(lng, cb) {
-        return init({lng: lng}, cb);
+    function setLng(lng, options, cb) {
+        if (typeof options === 'function') {
+            cb = options;
+            options = {};
+        }
+        options.lng = lng;
+        return init(options, cb);
     }
     
     function lng() {
@@ -764,6 +809,7 @@
     
         function localize(ele, options) {
             var key = ele.attr(o.selectorAttr);
+            if (!key && typeof key !== 'undefined' && key !== false) key = ele.text() || ele.val();
             if (!key) return;
     
             var target = ele
@@ -812,13 +858,21 @@
         if (str.indexOf(options.interpolationPrefix || o.interpolationPrefix) < 0) return str;
     
         var prefix = options.interpolationPrefix ? f.regexEscape(options.interpolationPrefix) : o.interpolationPrefixEscaped
-          , suffix = options.interpolationSuffix ? f.regexEscape(options.interpolationSuffix) : o.interpolationSuffixEscaped;
+          , suffix = options.interpolationSuffix ? f.regexEscape(options.interpolationSuffix) : o.interpolationSuffixEscaped
+          , unEscapingSuffix = 'HTML'+suffix;
     
         f.each(replacementHash, function(key, value) {
+            var nextKey = nestedKey ? nestedKey + o.keyseparator + key : key;
             if (typeof value === 'object' && value !== null) {
-                str = applyReplacement(str, value, nestedKey ? nestedKey + o.keyseparator + key : key, options);
+                str = applyReplacement(str, value, nextKey, options);
             } else {
-                str = str.replace(new RegExp([prefix, nestedKey ? nestedKey + o.keyseparator + key : key, suffix].join(''), 'g'), value);
+                if (options.escapeInterpolation || o.escapeInterpolation) {
+                    str = str.replace(new RegExp([prefix, nextKey, unEscapingSuffix].join(''), 'g'), value);
+                    str = str.replace(new RegExp([prefix, nextKey, suffix].join(''), 'g'), f.escape(value));
+                } else {
+                    str = str.replace(new RegExp([prefix, nextKey, suffix].join(''), 'g'), value);
+                }
+                // str = options.escapeInterpolation;
             }
         });
         return str;
@@ -874,15 +928,23 @@
     function exists(key, options) {
         options = options || {};
     
-        var notFound = options.defaultValue || key
+        var notFound = _getDefaultValue(key, options)
             , found = _find(key, options);
     
         return found !== undefined || found === notFound;
     }
     
     function translate(key, options) {
+        if (!initialized) {
+            f.log('i18next not finished initialization. you might have called t function before loading resources finished.')
+            return options.defaultValue || '';
+        };
         replacementCounter = 0;
         return _translate.apply(null, arguments);
+    }
+    
+    function _getDefaultValue(key, options) {
+        return (options.defaultValue !== undefined) ? options.defaultValue : key;
     }
     
     function _injectSprintfProcessor() {
@@ -900,23 +962,49 @@
         };
     }
     
-    function _translate(key, options) {
-        
+    function _translate(potentialKeys, options) {
         if (typeof options == 'string') {
-            // mh: gettext like sprintf syntax found, automatically create sprintf processor
-            options = _injectSprintfProcessor.apply(null, arguments);
+            if (o.shortcutFunction === 'sprintf') {
+                // mh: gettext like sprintf syntax found, automatically create sprintf processor
+                options = _injectSprintfProcessor.apply(null, arguments);
+            } else if (o.shortcutFunction === 'defaultValue') {
+                options = {
+                    defaultValue: options
+                }
+            }
         } else {
             options = options || {};
-        }         
+        }
     
-        var notFound = options.defaultValue || key
+        if (typeof potentialKeys == 'string') {
+            potentialKeys = [potentialKeys];
+        }
+    
+        var key = null;
+    
+        for (var i = 0; i < potentialKeys.length; i++) {
+            key = potentialKeys[i];
+            if (exists(key)) {
+                break;
+            }
+        }
+    
+        var notFound = _getDefaultValue(key, options)
             , found = _find(key, options)
             , lngs = options.lng ? f.toLanguages(options.lng) : languages
-            , ns = options.ns || o.ns.defaultNs;
+            , ns = options.ns || o.ns.defaultNs
+            , parts;
+    
+        // split ns and key
+        if (key.indexOf(o.nsseparator) > -1) {
+            parts = key.split(o.nsseparator);
+            ns = parts[0];
+            key = parts[1];
+        }
     
         if (found === undefined && o.sendMissing) {
             if (options.lng) {
-                sync.postMissing(lngs[0], ns, key, notfound, lngs);
+                sync.postMissing(lngs[0], ns, key, notFound, lngs);
             } else {
                 sync.postMissing(o.lng, ns, key, notFound, lngs);
             }
@@ -929,12 +1017,23 @@
             }
         }
     
+        // process notFound if function exists
+        var splitNotFound = notFound;
+        if (notFound.indexOf(o.nsseparator) > -1) {
+            parts = notFound.split(o.nsseparator);
+            splitNotFound = parts[1];
+        }
+        if (splitNotFound === key && o.parseMissingKey) {
+            notFound = o.parseMissingKey(notFound);
+        }
+    
         if (found === undefined) {
             notFound = applyReplacement(notFound, options);
             notFound = applyReuse(notFound, options);
     
             if (postProcessor && postProcessors[postProcessor]) {
-                found = postProcessors[postProcessor](found, key, options);
+                var val = _getDefaultValue(key, options);
+                found = postProcessors[postProcessor](val, key, options);
             }
         }
     
@@ -944,11 +1043,11 @@
     function _find(key, options){
         options = options || {};
     
-        if (!resStore) { return notfound; } // no resStore to translate from
-    
         var optionWithoutCount, translated
-            , notFound = options.defaultValue || key
+            , notFound = _getDefaultValue(key, options)
             , lngs = languages;
+    
+        if (!resStore) { return notFound; } // no resStore to translate from
     
         if (options.lng) {
             lngs = f.toLanguages(options.lng);
@@ -990,7 +1089,7 @@
             optionWithoutCount.defaultValue = o.pluralNotFound;
     
             var pluralKey = ns + o.nsseparator + key + o.pluralSuffix;
-            var pluralExtension = pluralExtensions.get(currentLng, options.count);
+            var pluralExtension = pluralExtensions.get(lngs[0], options.count);
             if (pluralExtension >= 0) {
                 pluralKey = pluralKey + '_' + pluralExtension;
             } else if (pluralExtension === 1) {
@@ -1035,12 +1134,11 @@
                         value = 'key \'' + ns + ':' + key + ' (' + l + ')\' ' +
                             'returned a object instead of string.';
                         f.log(value);
-                    } else {
+                    } else if (typeof value !== 'number') {
                         var copy = {}; // apply child translation on a copy
-                        for (var m in value) {
-                            // apply translation on childs
+                        f.each(value, function(m) {
                             copy[m] = _translate(ns + o.nsseparator + key + o.keyseparator + m, options);
-                        }
+                        });
                         value = copy;
                     }
                 }
@@ -1048,14 +1146,14 @@
             }
         }
     
-        if (found === undefined && !options.isFallbackLookup && (o.fallbackToDefaultNS === true || (o.fallbackNS && o.fallbackNS.length))) { 
+        if (found === undefined && !options.isFallbackLookup && (o.fallbackToDefaultNS === true || (o.fallbackNS && o.fallbackNS.length > 0))) { 
             // set flag for fallback lookup - avoid recursion
             options.isFallbackLookup = true;
     
             if (o.fallbackNS.length) {
     
                 for (var y = 0, lenY = o.fallbackNS.length; y < lenY; y++) {
-                    found = _translate(o.fallbackNS[y] + o.nsseparator + key, options);
+                    found = _find(o.fallbackNS[y] + o.nsseparator + key, options);
                     
                     if (found) {
                         /* compare value without namespace */
@@ -1066,7 +1164,7 @@
                     }
                 }
             } else {
-                found = _translate(key, options); // fallback to default NS
+                found = _find(key, options); // fallback to default NS
             }
         }
     
@@ -1257,9 +1355,9 @@
     
             var urls = [];
     
-            if (o.sendMissingTo === 'fallback') {
+            if (o.sendMissingTo === 'fallback' && o.fallbackLng !== false) {
                 urls.push({lng: o.fallbackLng, url: applyReplacement(o.resPostPath, { lng: o.fallbackLng, ns: ns })});
-            } else if (o.sendMissingTo === 'current') {
+            } else if (o.sendMissingTo === 'current' || (o.sendMissingTo === 'fallback' && o.fallbackLng === false) ) {
                 urls.push({lng: lng, url: applyReplacement(o.resPostPath, { lng: lng, ns: ns })});
             } else if (o.sendMissingTo === 'all') {
                 for (var i = 0, l = lngs.length; i < l; i++) {
@@ -2556,7 +2654,10 @@
     i18n.lng = lng;
     i18n.addPostProcessor = addPostProcessor;
     i18n.options = o;
+
+    $.i18n = i18n;
+    $.t = i18n.t;
         
-    return i18n; 
+    return i18n;
 
 }));

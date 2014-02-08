@@ -1,10 +1,14 @@
 describe('translation functionality', function() {
 
+  //= translate/translate.missingKey.spec.js
+
   //= translate/translate.exists.spec.js
 
   //= translate/translate.nullValue.spec.js
 
   //= translate/translate.emptyValue.spec.js
+
+  //= translate/translate.arrayKey.spec.js
 
   //= translate/translate.arrayValue.spec.js
 
@@ -25,5 +29,7 @@ describe('translation functionality', function() {
   //= translate/translate.context.spec.js
 
   //= translate/translate.setlng.spec.js
+
+  //= translate/translate.defaultValue.spec.js
 
 });

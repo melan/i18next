@@ -8,6 +8,7 @@ function init(options, cb) {
     
     // override defaults with passed in options
     f.extend(o, options);
+    delete o.fixLng; /* passed in each time */
 
     // create namespace object if namespace is passed in as string
     if (typeof o.ns == 'string') {
@@ -26,7 +27,7 @@ function init(options, cb) {
     if (!o.lng) o.lng = f.detectLanguage(); 
     if (o.lng) {
         // set cookie with lng set (as detectLanguage will set cookie on need)
-        if (o.useCookie) f.cookie.create(o.cookieName, o.lng, o.cookieExpirationTime);
+        if (o.useCookie) f.cookie.create(o.cookieName, o.lng, o.cookieExpirationTime, o.cookieDomain);
     } else {
         o.lng =  o.fallbackLng;
         if (o.useCookie) f.cookie.remove(o.cookieName);
@@ -35,6 +36,16 @@ function init(options, cb) {
     languages = f.toLanguages(o.lng);
     currentLng = languages[0];
     f.log('currentLng set to: ' + currentLng);
+
+    var lngTranslate = translate;
+    if (options.fixLng) {
+        lngTranslate = function(key, options) {
+            options = options || {};
+            options.lng = options.lng || lngTranslate.lng;
+            return translate(key, options);
+        };
+        lngTranslate.lng = currentLng;
+    }
 
     pluralExtensions.setCurrentLng(currentLng);
 
@@ -50,8 +61,9 @@ function init(options, cb) {
     // return immidiatly if res are passed in
     if (o.resStore) {
         resStore = o.resStore;
-        if (cb) cb(translate);
-        if (deferred) deferred.resolve();
+        initialized = true;
+        if (cb) cb(lngTranslate);
+        if (deferred) deferred.resolve(lngTranslate);
         if (deferred) return deferred.promise();
         return;
     }
@@ -71,9 +83,10 @@ function init(options, cb) {
     // else load them
     i18n.sync.load(lngsToLoad, o, function(err, store) {
         resStore = store;
+        initialized = true;
 
-        if (cb) cb(translate);
-        if (deferred) deferred.resolve();
+        if (cb) cb(lngTranslate);
+        if (deferred) deferred.resolve(lngTranslate);
     });
 
     if (deferred) return deferred.promise();

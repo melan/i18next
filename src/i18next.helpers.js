@@ -47,6 +47,25 @@ function _each(object, callback, args) {
     return object;
 }
 
+var _entityMap = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': '&quot;',
+    "'": '&#39;',
+    "/": '&#x2F;'
+};
+
+function _escape(data) {
+    if (typeof data === 'string') {
+        return data.replace(/[&<>"'\/]/g, function (s) {
+            return _entityMap[s];
+        });    
+    }else{
+        return data;
+    }
+}
+
 function _ajax(options) {
 
     // v0.5.0 of https://github.com/goloroden/http.js
@@ -337,7 +356,7 @@ function _ajax(options) {
 }
 
 var _cookie = {
-    create: function(name,value,minutes) {
+    create: function(name,value,minutes,domain) {
         var expires;
         if (minutes) {
             var date = new Date();
@@ -345,7 +364,8 @@ var _cookie = {
             expires = "; expires="+date.toGMTString();
         }
         else expires = "";
-        document.cookie = name+"="+value+expires+"; path=/";
+        domain = (domain)? "domain="+domain+";" : "";
+        document.cookie = name+"="+value+expires+";"+domain+"path=/";
     },
 
     read: function(name) {
@@ -365,7 +385,7 @@ var _cookie = {
 };
 
 var cookie_noop = {
-    create: function(name,value,minutes) {},
+    create: function(name,value,minutes,domain) {},
     read: function(name) { return null; },
     remove: function(name) {}
 };
@@ -380,6 +400,7 @@ var f = {
     ajax: $ ? $.ajax : _ajax,
     cookie: typeof document !== 'undefined' ? _cookie : cookie_noop,
     detectLanguage: detectLanguage,
+    escape: _escape,
     log: function(str) {
         if (o.debug && typeof console !== "undefined") console.log(str);
     },

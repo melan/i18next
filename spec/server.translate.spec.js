@@ -10,6 +10,8 @@ describe('i18next.translate', function() {
     opts = {
       lng: 'en-US',
       fallbackLng: 'dev',
+      fallbackNS: [],
+      fallbackToDefaultNS: false,
       load: 'all',
       preload: [],
       supportedLngs: [],
@@ -23,13 +25,18 @@ describe('i18next.translate', function() {
       interpolationPrefix: '__',
       interpolationSuffix: '__',
       postProcess: '',
+      parseMissingKey: '',
       debug: false
     };
   });
 
+  //= translate/translate.missingKey.spec.js
+
   //= translate/translate.nullValue.spec.js
 
   //= translate/translate.emptyValue.spec.js
+
+  //= translate/translate.arrayKey.spec.js
 
   //= translate/translate.arrayValue.spec.js
 

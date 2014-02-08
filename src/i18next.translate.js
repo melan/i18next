@@ -5,13 +5,21 @@ function applyReplacement(str, replacementHash, nestedKey, options) {
     if (str.indexOf(options.interpolationPrefix || o.interpolationPrefix) < 0) return str;
 
     var prefix = options.interpolationPrefix ? f.regexEscape(options.interpolationPrefix) : o.interpolationPrefixEscaped
-      , suffix = options.interpolationSuffix ? f.regexEscape(options.interpolationSuffix) : o.interpolationSuffixEscaped;
+      , suffix = options.interpolationSuffix ? f.regexEscape(options.interpolationSuffix) : o.interpolationSuffixEscaped
+      , unEscapingSuffix = 'HTML'+suffix;
 
     f.each(replacementHash, function(key, value) {
+        var nextKey = nestedKey ? nestedKey + o.keyseparator + key : key;
         if (typeof value === 'object' && value !== null) {
-            str = applyReplacement(str, value, nestedKey ? nestedKey + o.keyseparator + key : key, options);
+            str = applyReplacement(str, value, nextKey, options);
         } else {
-            str = str.replace(new RegExp([prefix, nestedKey ? nestedKey + o.keyseparator + key : key, suffix].join(''), 'g'), value);
+            if (options.escapeInterpolation || o.escapeInterpolation) {
+                str = str.replace(new RegExp([prefix, nextKey, unEscapingSuffix].join(''), 'g'), value);
+                str = str.replace(new RegExp([prefix, nextKey, suffix].join(''), 'g'), f.escape(value));
+            } else {
+                str = str.replace(new RegExp([prefix, nextKey, suffix].join(''), 'g'), value);
+            }
+            // str = options.escapeInterpolation;
         }
     });
     return str;
@@ -64,22 +72,28 @@ function needsPlural(options) {
     return (options.count !== undefined && typeof options.count != 'string' && options.count !== 1);
 }
 
-function needsNegative(options) {
-    return (options.count !== undefined && typeof options.count === 'number' && options.count === 0);
-}
-
 function exists(key, options) {
     options = options || {};
 
-    var notFound = options.defaultValue || key
+    var notFound = _getDefaultValue(key, options)
         , found = _find(key, options);
 
     return found !== undefined || found === notFound;
 }
 
 function translate(key, options) {
+    options = options || {};
+    
+    if (!initialized) {
+        f.log('i18next not finished initialization. you might have called t function before loading resources finished.')
+        return options.defaultValue || '';
+    };
     replacementCounter = 0;
     return _translate.apply(null, arguments);
+}
+
+function _getDefaultValue(key, options) {
+    return (options.defaultValue !== undefined) ? options.defaultValue : key;
 }
 
 function _injectSprintfProcessor() {
@@ -97,23 +111,49 @@ function _injectSprintfProcessor() {
     };
 }
 
-function _translate(key, options) {
-    
+function _translate(potentialKeys, options) {
     if (typeof options == 'string') {
-        // mh: gettext like sprintf syntax found, automatically create sprintf processor
-        options = _injectSprintfProcessor.apply(null, arguments);
+        if (o.shortcutFunction === 'sprintf') {
+            // mh: gettext like sprintf syntax found, automatically create sprintf processor
+            options = _injectSprintfProcessor.apply(null, arguments);
+        } else if (o.shortcutFunction === 'defaultValue') {
+            options = {
+                defaultValue: options
+            }
+        }
     } else {
-    options = options || {};
-    }         
+        options = options || {};
+    }
 
-    var notFound = options.defaultValue || key
+    if (typeof potentialKeys == 'string') {
+        potentialKeys = [potentialKeys];
+    }
+
+    var key = null;
+
+    for (var i = 0; i < potentialKeys.length; i++) {
+        key = potentialKeys[i];
+        if (exists(key)) {
+            break;
+        }
+    }
+
+    var notFound = _getDefaultValue(key, options)
         , found = _find(key, options)
         , lngs = options.lng ? f.toLanguages(options.lng) : languages
-        , ns = options.ns || o.ns.defaultNs;
+        , ns = options.ns || o.ns.defaultNs
+        , parts;
+
+    // split ns and key
+    if (key.indexOf(o.nsseparator) > -1) {
+        parts = key.split(o.nsseparator);
+        ns = parts[0];
+        key = parts[1];
+    }
 
     if (found === undefined && o.sendMissing) {
         if (options.lng) {
-            sync.postMissing(lngs[0], ns, key, notfound, lngs);
+            sync.postMissing(lngs[0], ns, key, notFound, lngs);
         } else {
             sync.postMissing(o.lng, ns, key, notFound, lngs);
         }
@@ -126,12 +166,23 @@ function _translate(key, options) {
         }
     }
 
+    // process notFound if function exists
+    var splitNotFound = notFound;
+    if (notFound.indexOf(o.nsseparator) > -1) {
+        parts = notFound.split(o.nsseparator);
+        splitNotFound = parts[1];
+    }
+    if (splitNotFound === key && o.parseMissingKey) {
+        notFound = o.parseMissingKey(notFound);
+    }
+
     if (found === undefined) {
         notFound = applyReplacement(notFound, options);
         notFound = applyReuse(notFound, options);
 
         if (postProcessor && postProcessors[postProcessor]) {
-            found = postProcessors[postProcessor](found, key, options);
+            var val = _getDefaultValue(key, options);
+            found = postProcessors[postProcessor](val, key, options);
         }
     }
 
@@ -141,11 +192,11 @@ function _translate(key, options) {
 function _find(key, options){
     options = options || {};
 
-    if (!resStore) { return notfound; } // no resStore to translate from
-
     var optionWithoutCount, translated
-        , notFound = options.defaultValue || key
+        , notFound = _getDefaultValue(key, options)
         , lngs = languages;
+
+    if (!resStore) { return notFound; } // no resStore to translate from
 
     if (options.lng) {
         lngs = f.toLanguages(options.lng);
@@ -181,30 +232,13 @@ function _find(key, options){
         } // else continue translation with original/nonContext key
     }
 
-    if (needsNegative(options)) {
-        optionWithoutCount = f.extend({}, options);
-        delete optionWithoutCount.count;
-        optionWithoutCount.defaultValue = o.negativeNotFound;
-
-        var negativeKey = ns + o.nsseparator + key + o.negativeSuffix;
-
-        translated = translate(negativeKey, optionWithoutCount);
-        if (translated != o.negativeNotFound) {
-            return applyReplacement(translated, {
-                count: options.count,
-                interpolationPrefix: options.interpolationPrefix,
-                interpolationSuffix: options.interpolationSuffix
-            }); // apply replacement for count only
-        } // else continue translation with original/singular key
-
-    }
-    else if (needsPlural(options)) {
+    if (needsPlural(options)) {
         optionWithoutCount = f.extend({}, options);
         delete optionWithoutCount.count;
         optionWithoutCount.defaultValue = o.pluralNotFound;
 
         var pluralKey = ns + o.nsseparator + key + o.pluralSuffix;
-        var pluralExtension = pluralExtensions.get(currentLng, options.count);
+        var pluralExtension = pluralExtensions.get(lngs[0], options.count);
         if (pluralExtension >= 0) {
             pluralKey = pluralKey + '_' + pluralExtension;
         } else if (pluralExtension === 1) {
@@ -247,14 +281,13 @@ function _find(key, options){
             } else if (value !== null) {
                 if (!o.returnObjectTrees && !options.returnObjectTrees) {
                     value = 'key \'' + ns + ':' + key + ' (' + l + ')\' ' +
-                        'returned a object instead of string.';
+                        'returned an object instead of string.';
                     f.log(value);
-                } else {
+                } else if (typeof value !== 'number') {
                     var copy = {}; // apply child translation on a copy
-                    for (var m in value) {
-                        // apply translation on childs
+                    f.each(value, function(m) {
                         copy[m] = _translate(ns + o.nsseparator + key + o.keyseparator + m, options);
-                    }
+                    });
                     value = copy;
                 }
             }
@@ -262,14 +295,14 @@ function _find(key, options){
         }
     }
 
-    if (found === undefined && !options.isFallbackLookup && (o.fallbackToDefaultNS === true || (o.fallbackNS && o.fallbackNS.length))) { 
+    if (found === undefined && !options.isFallbackLookup && (o.fallbackToDefaultNS === true || (o.fallbackNS && o.fallbackNS.length > 0))) { 
         // set flag for fallback lookup - avoid recursion
         options.isFallbackLookup = true;
 
         if (o.fallbackNS.length) {
 
             for (var y = 0, lenY = o.fallbackNS.length; y < lenY; y++) {
-                found = _translate(o.fallbackNS[y] + o.nsseparator + key, options);
+                found = _find(o.fallbackNS[y] + o.nsseparator + key, options);
                 
                 if (found) {
                     /* compare value without namespace */
@@ -280,7 +313,7 @@ function _find(key, options){
                 }
             }
         } else {
-            found = _translate(key, options); // fallback to default NS
+            found = _find(key, options); // fallback to default NS
         }
     }
 

@@ -10,11 +10,11 @@ interface IResourceStore {
     [language: string]: IResourceStoreLanguage;
 }
 interface IResourceStoreLanguage {
-    [namespace: string]: IResourceStoreKey;
+    [namespace: string]: any;
 }
-interface IResourceStoreKey {
-    [key: string];
-}
+//interface IResourceStoreKey {
+//    [key: string];
+//}
 
 interface I18nextOptions {
     lng?: string;                           // Default value: undefined
